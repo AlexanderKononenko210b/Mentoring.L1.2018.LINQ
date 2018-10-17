@@ -27,9 +27,13 @@ namespace SampleQueries
         {
             var border = 80000;
 
-            var results = from cust in _dataSource.Customers
-                          where cust.Orders.Sum(order => order.Total) > border
-                          select new { Customer = cust.CustomerID, Total = cust.Orders.Sum(order => order.Total) };
+            var results = _dataSource.Customers
+                .Select(customer => new
+                {
+                    CustomerName = customer.CompanyName,
+                    Total = customer.Orders.Sum(order => order.Total),
+                })
+                .Where(customer => customer.Total > border);
 
             foreach (var p in results)
             {
@@ -151,20 +155,25 @@ namespace SampleQueries
                      "(from the maximum to the minimum), and the client's name.")]
         public void Linq5()
         {
-            var results =
-                from customer in (from customer in _dataSource.Customers
-                              where customer.Orders.Length != 0
-                              select new
-                              {
-                                  Customer = customer.CompanyName,
-                                  StartDate = customer.Orders.Min(order => order.OrderDate)
-                              })
-                orderby customer.StartDate.Year, customer.StartDate.Month, customer.Customer descending
-                select new { customer.Customer, customer.StartDate };
+            var results = _dataSource.Customers
+                .Select(customer => new
+                {
+                    CustomerName = customer.CompanyName,
+                    Total = customer.Orders.Sum(order => order.Total),
+                    FirstDateOrder = customer.Orders
+                        .OrderBy(order => order.OrderDate)
+                        .FirstOrDefault()
+                })
+                .OrderBy(result => result.FirstDateOrder?.OrderDate.Year)
+                .ThenBy(result => result.FirstDateOrder?.OrderDate.Month)
+                .ThenByDescending(result => result.Total)
+                .ThenBy(result => result.CustomerName);
 
-            foreach (var p in results)
+            foreach (var customerInfo in results)
             {
-                ObjectDumper.Write(p);
+                Console.Write($"Customer:{customerInfo.CustomerName}, Total orders:{customerInfo.Total}, FirstOrderDate:");
+                Console.WriteLine(customerInfo.FirstDateOrder == null 
+                    ? "No orders" : $"Year:{customerInfo.FirstDateOrder.OrderDate.Year} Month:{customerInfo.FirstDateOrder.OrderDate.Month}");
             }
         }
 
@@ -178,7 +187,7 @@ namespace SampleQueries
         {
             var results =
                 from cust in _dataSource.Customers
-                where !int.TryParse(cust.PostalCode, out var postalCode)
+                where cust.PostalCode.Any(letter => !char.IsDigit(letter))
                       || string.IsNullOrEmpty(cust.Region)
                       || !cust.Phone.StartsWith("(")
                 select new
@@ -261,10 +270,11 @@ namespace SampleQueries
         }
 
         [Category("Linq Operators")]
-        [Title("Task 9-1")]
+        [Title("Task 9")]
         [Description("This sample return group the average profitability of each city " +
-                     "(the average amount of the order for all customers from a given city)")]
-        public void Linq9_1()
+                     "(the average amount of the order for all customers from a given city) and average intensity " +
+                     "(the average number of orders per customer from each city).")]
+        public void Linq9()
         {
             var results = _dataSource.Customers
                 .Select(customer => new
@@ -276,38 +286,16 @@ namespace SampleQueries
                 .GroupBy(customer => customer.City, (city, customer) => new
                 {
                     City = city,
-                    Average = customer.Sum(order => order.Total) / customer.Sum(order => order.CountOrders)
+                    AverageProfitability = customer.Sum(order => order.Total) / customer.Sum(order => order.CountOrders),
+                    AverageIntensity = customer.Sum(order => order.CountOrders) / _dataSource.Customers.Count(cust => cust.City == city)
                 })
                 .OrderBy(cust => cust.City);
 
             foreach (var info in results)
             {
-                Console.WriteLine($"City:{info.City}\t\t Average profitability:{info.Average: #.#}");
-            }
-        }
-
-        [Category("Linq Operators")]
-        [Title("Task 9-2")]
-        [Description("This sample return the average intensity " +
-                     "(the average number of orders per customer from each city).")]
-        public void Linq9_2()
-        {
-            var results = _dataSource.Customers
-                .Select(customer => new
-                {
-                    customer.City,
-                    OrderCount = customer.Orders.Count()
-                })
-                .GroupBy(customer => customer.City, (city, customer) => new
-                {
-                    City = city,
-                    Average = customer.Sum(order => order.OrderCount) / _dataSource.Customers.Count(cust => cust.City == city)
-                })
-                .OrderBy(cust => cust.City);
-
-            foreach (var info in results)
-            {
-                Console.WriteLine($"City:{info.City}\t\t Average intensity:{info.Average : #.#}");
+                Console.WriteLine($"City:{info.City}\t" +
+                                  $"Average profitability:{info.AverageProfitability: #.#}\t " +
+                                  $"Average intensity:{info.AverageIntensity}");
             }
         }
 
